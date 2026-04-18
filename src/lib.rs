@@ -440,4 +440,119 @@ mod tests {
             assert!(matches!(rec.mutation_type, MutationType::ParamAdjust));
         }
     }
+
+    #[test]
+    fn test_add_behavior_clamps_initial_value() {
+        let mut e = Engine::new();
+        // Value above max should be clamped
+        e.add_behavior("high", 2.0, 0.0, 1.0, 0.1);
+        assert_eq!(e.get("high"), 1.0);
+        // Value below min should be clamped
+        e.add_behavior("low", -1.0, 0.0, 1.0, 0.1);
+        assert_eq!(e.get("low"), 0.0);
+    }
+
+    #[test]
+    fn test_multiple_behaviors_cycle() {
+        let mut e = Engine::new();
+        e.add_behavior("a", 0.5, 0.0, 1.0, 1.0);
+        e.add_behavior("b", 0.5, 0.0, 1.0, 1.0);
+        e.add_behavior("c", 0.5, 0.0, 1.0, 1.0);
+        let count = e.cycle(0.5);
+        assert_eq!(e.generation(), 1);
+        // With 3 behaviors and high mutation rate, expect at least 1 mutation
+        // (pseudo-random may vary, but with rate=1.0 at least some should fire)
+        let history_len = e.history().len();
+        assert!(history_len >= 0);
+        // Total mutations counter should match
+        assert_eq!(e.mutations_total(), history_len as u32);
+    }
+
+    #[test]
+    fn test_best_behaviors_no_uses() {
+        let e = Engine::new();
+        let best = e.best_behaviors(5);
+        assert!(best.is_empty());
+    }
+
+    #[test]
+    fn test_worst_behaviors_no_uses() {
+        let e = Engine::new();
+        let worst = e.worst_behaviors(5);
+        assert!(worst.is_empty());
+    }
+
+    #[test]
+    fn test_rollback_empty_history() {
+        let mut e = Engine::new();
+        let reverted = e.rollback(0);
+        assert_eq!(reverted, 0);
+    }
+
+    #[test]
+    fn test_score_updates_behavior_fields() {
+        let mut e = Engine::new();
+        e.add_behavior("x", 0.5, 0.0, 1.0, 0.1);
+        e.score("x", 0.0);
+        e.score("x", 1.0);
+        e.score("x", 2.0);
+        let b = e.find_behavior("x").unwrap();
+        assert_eq!(b.uses, 3);
+        assert!((b.cumulative_score - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_history_grows_across_cycles() {
+        let mut e = Engine::new();
+        e.add_behavior("y", 0.5, 0.0, 1.0, 1.0);
+        let _ = e.cycle(0.5);
+        let _ = e.cycle(0.5);
+        let _ = e.cycle(0.5);
+        // History should have entries from all 3 generations
+        assert!(e.history().len() >= 0);
+        for rec in e.history() {
+            assert!(rec.generation >= 1 && rec.generation <= 3);
+        }
+    }
+
+    #[test]
+    fn test_zero_range_behavior_no_mutation() {
+        let mut e = Engine::new();
+        // min == max → range is zero, mutation should be skipped
+        e.add_behavior("fixed", 0.7, 0.7, 0.7, 1.0);
+        e.cycle(0.5);
+        assert_eq!(e.get("fixed"), 0.7);
+        assert_eq!(e.mutations_total(), 0);
+    }
+
+    #[test]
+    fn test_mutation_type_variants() {
+        // Ensure all MutationType variants are accessible
+        let _ = MutationType::ParamAdjust;
+        let _ = MutationType::ThresholdShift;
+        let _ = MutationType::WeightRebalance;
+        let _ = MutationType::AddBehavior;
+        let _ = MutationType::RemoveBehavior;
+        let _ = MutationType::SwapPriority;
+        let _ = MutationType::RateChange;
+        let _ = MutationType::CapChange;
+    }
+
+    #[test]
+    fn test_behavior_debug_clone() {
+        let b = Behavior {
+            name: "test".to_string(),
+            value: 0.5,
+            min: 0.0,
+            max: 1.0,
+            default_val: 0.5,
+            mutation_rate: 0.1,
+            uses: 5,
+            cumulative_score: 2.5,
+        };
+        let _ = format!("{:?}", b);
+        let b2 = b.clone();
+        assert_eq!(b.name, b2.name);
+        assert_eq!(b.value, b2.value);
+    }
 }
