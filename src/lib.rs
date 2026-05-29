@@ -1,3 +1,4 @@
+#![allow(clippy::new_without_default, clippy::collapsible_if)]
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
